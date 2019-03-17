@@ -1,4 +1,4 @@
-/* tcc.exe wic.c -lgdiplus
+/* tcc.exe wic.c -lgdi32 -lgdiplus -luser32
 https://msdn.microsoft.com/en-us/library/windows/desktop/ms533837.aspx
 */
 
@@ -13,6 +13,7 @@ https://msdn.microsoft.com/en-us/library/windows/desktop/ms533837.aspx
 
 typedef void *DebugEventProc;
 typedef void GpImage;
+typedef void GpBitmap;
 
 typedef enum GpStatus {
 	Ok = 0,
@@ -88,6 +89,7 @@ GpStatus WINGDIPAPI GdiplusStartup(ULONG_PTR*,GDIPCONST GdiplusStartupInput*,Gdi
 GpStatus WINGDIPAPI GdipGetImageEncodersSize(UINT*,UINT*);
 GpStatus WINGDIPAPI GdipGetImageEncoders(UINT,UINT,ImageCodecInfo*);
 GpStatus WINGDIPAPI GdipLoadImageFromFile(GDIPCONST WCHAR*,GpImage**);
+GpStatus WINGDIPAPI GdipCreateBitmapFromHBITMAP(HBITMAP,HPALETTE,GpBitmap**);
 GpStatus WINGDIPAPI GdipSaveImageToFile(GpImage*,GDIPCONST WCHAR*,GDIPCONST CLSID*,GDIPCONST EncoderParameters*);
 VOID WINGDIPAPI GdiplusShutdown(ULONG_PTR);
 
@@ -107,7 +109,7 @@ int wmain(int argc, WCHAR **argv)
     //
     if (argc != 3) {
         wprintf(L"wic: (Windows Imaging Component) Image Converter, @YX Hao, #20170220\n");
-        wprintf(L"Usage: %s <in-file> <out-file>\n", argv[0]);
+        wprintf(L"Usage: %s <in-file|/s> <out-file>\n", argv[0]);
         wprintf(L"Formats: Same as mspaint!\n");
         return 1;
     }
@@ -145,7 +147,20 @@ int wmain(int argc, WCHAR **argv)
         ret = 5;
         goto END;
     }
-    if (GdipLoadImageFromFile(argv[1], &GpImage) != Ok) {
+    if (wcsicmp(argv[1], L"/s") == 0) {
+        int width = GetSystemMetrics(SM_CXSCREEN);
+        int height = GetSystemMetrics(SM_CYSCREEN);
+        HDC desktopdc = GetDC(NULL);
+        HDC mydc = CreateCompatibleDC(desktopdc);
+        HBITMAP mybmp = CreateCompatibleBitmap(desktopdc, width, height);
+        SelectObject(mydc, mybmp); // doesn't store
+        BitBlt(mydc, 0, 0, width, height, desktopdc, 0, 0, SRCCOPY|CAPTUREBLT);
+        GdipCreateBitmapFromHBITMAP(mybmp, NULL, &GpImage);
+        DeleteObject(mybmp);
+        DeleteDC(mydc);
+        ReleaseDC(NULL, desktopdc);
+    }
+    else if (GdipLoadImageFromFile(argv[1], &GpImage) != Ok) {
         wprintf(L"Unsupported input format!\n");
         ret = 6;
         goto END;
@@ -158,6 +173,7 @@ int wmain(int argc, WCHAR **argv)
     wprintf(L"Saved: '%s'\n", argv[2]);
     //
 END:
+    DeleteObject(&GpImage);
     GdiplusShutdown(gdiplusToken);
     return ret;
 }
